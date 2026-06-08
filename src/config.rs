@@ -15,6 +15,15 @@ impl Config {
     }
 }
 
+/// Reads `DISCORD_TOKEN` from the process environment and validates it via [`Config::from_token`].
+///
+/// Thin I/O wrapper with no test seam: a missing/non-unicode var maps to `None` (→ `MissingToken`),
+/// a present value to `Some(_)`. The validation logic is unit-tested on the pure `from_token`; this
+/// reader is exercised by the live run.
+pub fn from_env() -> Result<Config, BotError> {
+    Config::from_token(std::env::var("DISCORD_TOKEN").ok())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
