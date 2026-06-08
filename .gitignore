@@ -5,3 +5,9 @@
 
 # IDE
 .idea/
+
+# straitjacket run artifacts (keep bugs.json committable)
+.straitjacket/*/
+mutants.out/
+mutation_test.log
+.straitjacket/.current_run_id
