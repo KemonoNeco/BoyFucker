@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `boyfucker` — a personal Discord bot (Rust). Currently a **connection-only scaffold**: it authenticates, connects to the gateway, and logs "Logged in as …" but registers **no commands yet**. The first planned feature is basic moderation; an LLM integration may follow.
 
-The crate name is `boyfucker`; the GitHub repo and the bot's Discord display name are `BoyFucker`.
+Names: crate `boyfucker`, GitHub repo `BoyFucker`, Discord display name `Boyfucker` (the display name is set in the Developer Portal, not in code, so treat it as the source of truth over anything hardcoded).
 
 ## Commands
 
