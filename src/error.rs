@@ -1,9 +1,5 @@
 use thiserror::Error;
 
-// STUB (tdd red phase): messages are intentionally neutral placeholders.
-// The implementation-author replaces these #[error(...)] strings in green
-// to mention DISCORD_TOKEN. dead_code is allowed until real call sites exist.
-#[allow(dead_code)]
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum BotError {
     // WORK_UNIT_ID: wu-boterror-missingtoken-display
