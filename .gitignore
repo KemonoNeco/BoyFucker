@@ -1,0 +1,7 @@
+/target
+
+# Secrets - never commit the bot token
+.env
+
+# IDE
+.idea/
