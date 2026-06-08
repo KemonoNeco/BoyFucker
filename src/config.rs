@@ -1,12 +1,4 @@
-use thiserror::Error;
-
-#[derive(Debug, Error, PartialEq, Eq)]
-pub enum BotError {
-    #[error("no token was provided")]
-    MissingToken,
-    #[error("the provided token was empty")]
-    EmptyToken,
-}
+use crate::error::BotError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
@@ -69,5 +61,53 @@ mod tests {
             .expect("non-whitespace token should produce Ok");
         assert_eq!(config.token, " a ");
         assert_eq!(config.token.len(), 3);
+    }
+
+    #[test]
+    fn test_from_token_error_display_mentions_discord_token() {
+        for token in [None, Some(String::new()), Some(" \t\n".to_string())] {
+            let rendered = Config::from_token(token.clone())
+                .expect_err("blank/missing token should produce Err")
+                .to_string();
+            assert!(
+                rendered.contains("DISCORD_TOKEN"),
+                "expected error Display for input {token:?} to mention DISCORD_TOKEN, got: {rendered}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_from_token_none_error_display_mentions_discord_token() {
+        let rendered = Config::from_token(None)
+            .expect_err("None token should produce Err")
+            .to_string();
+        assert!(
+            rendered.contains("DISCORD_TOKEN"),
+            "expected None-token error Display to mention DISCORD_TOKEN, got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn test_from_token_empty_string_error_display_mentions_discord_token() {
+        let rendered = Config::from_token(Some(String::new()))
+            .expect_err("empty token should produce Err")
+            .to_string();
+        assert!(
+            rendered.contains("DISCORD_TOKEN"),
+            "expected empty-token error Display to mention DISCORD_TOKEN, got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn test_from_token_whitespace_only_error_display_mentions_discord_token() {
+        for token in ["   ".to_string(), "\t\n\r".to_string()] {
+            let rendered = Config::from_token(Some(token.clone()))
+                .expect_err("whitespace-only token should produce Err")
+                .to_string();
+            assert!(
+                rendered.contains("DISCORD_TOKEN"),
+                "expected whitespace-token error Display for {token:?} to mention DISCORD_TOKEN, got: {rendered}"
+            );
+        }
     }
 }
