@@ -1,3 +1,5 @@
+pub mod moderation;
+
 use crate::{Data, Error};
 
 /// All registered bot commands. Empty for the connection-only scaffold — add commands here and
