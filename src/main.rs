@@ -45,7 +45,23 @@ async fn main() -> anyhow::Result<()> {
         })
         .setup(|ctx, _ready, framework| {
             Box::pin(async move {
-                poise::builtins::register_globally(ctx, &framework.options().commands).await?;
+                let commands = &framework.options().commands;
+                // Guild-scoped registration (instant) when TEST_GUILD_ID is set; else global
+                // (can take up to ~1h to propagate). Lets the dev loop iterate fast.
+                match std::env::var("TEST_GUILD_ID")
+                    .ok()
+                    .and_then(|s| s.trim().parse::<u64>().ok())
+                {
+                    Some(id) => {
+                        let guild = serenity::GuildId::new(id);
+                        poise::builtins::register_in_guild(ctx, commands, guild).await?;
+                        tracing::info!("registered {} commands in test guild {id}", commands.len());
+                    }
+                    None => {
+                        poise::builtins::register_globally(ctx, commands).await?;
+                        tracing::info!("registered {} commands globally", commands.len());
+                    }
+                }
                 Ok(Data {})
             })
         })

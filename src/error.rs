@@ -11,11 +11,6 @@ pub enum BotError {
     EmptyToken,
 }
 
-// `#[allow(dead_code)]`: these variants are not yet constructed from
-// non-test code. The implementation that wires ModError into the moderation
-// flow lands separately; until then a non-test build would otherwise trip the
-// `dead_code` lint under `-D warnings`, so the allow stays for now.
-#[allow(dead_code)]
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ModError {
     // WORK_UNIT_ID: wu-moderror-invalidpurgecount-display

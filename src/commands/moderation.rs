@@ -83,9 +83,7 @@ pub fn parse_timeout_duration(input: &str) -> Result<Duration, ModError> {
     // The magnitude must be a non-negative integer. Parsing as u64 rejects negatives,
     // decimals, non-numeric text, and a bare missing magnitude; a too-wide literal that
     // overflows u64 also fails here and surfaces as InvalidDuration (never a panic).
-    let magnitude: u64 = magnitude
-        .parse()
-        .map_err(|_| ModError::InvalidDuration)?;
+    let magnitude: u64 = magnitude.parse().map_err(|_| ModError::InvalidDuration)?;
 
     // A zero-magnitude timeout is meaningless regardless of unit.
     if magnitude == 0 {
@@ -141,6 +139,207 @@ pub fn check_moderation_allowed(check: ModCheck) -> Result<(), ModError> {
     } else {
         Err(ModError::InsufficientHierarchy)
     }
+}
+
+// ---------------------------------------------------------------------------
+// Command handlers (I/O glue — verified by compile + live run, not unit tests).
+// Each parses args, runs the pure validator(s) above, performs the serenity HTTP
+// action, and replies. The pure functions hold the logic; these are the wiring.
+// ---------------------------------------------------------------------------
+
+use crate::{Context, Data, Error};
+use poise::serenity_prelude as serenity;
+
+/// Current UNIX time in seconds (used to compute timeout expiry timestamps).
+fn now_unix_secs() -> Result<i64, Error> {
+    Ok(std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_secs() as i64)
+}
+
+/// Reply to the command with a [`ModError`]'s user-facing Display message.
+async fn reply_err(ctx: Context<'_>, err: ModError) -> Result<(), Error> {
+    ctx.say(err.to_string()).await?;
+    Ok(())
+}
+
+/// Resolve the live facts for a moderation attempt and run [`check_moderation_allowed`].
+///
+/// Role positions come from the cached guild; the actor's member is fetched if not cached.
+/// The cache borrow is confined to a sync block so it is never held across an `.await`.
+async fn authorize(
+    ctx: &Context<'_>,
+    target: &serenity::Member,
+) -> Result<Result<(), ModError>, Error> {
+    let guild_id = ctx
+        .guild_id()
+        .ok_or("this command can only be used in a guild")?;
+    let actor_id = ctx.author().id;
+    let bot_id = ctx.serenity_context().cache.current_user().id;
+
+    // Fetch the actor's member (for their role positions) before touching the cache.
+    let actor_member = guild_id.member(ctx.serenity_context(), actor_id).await?;
+
+    let (actor_top_role, target_top_role, owner_id) = {
+        let guild = ctx.guild().ok_or("guild is not available in the cache")?;
+        let highest = |roles: &[serenity::RoleId]| -> i64 {
+            roles
+                .iter()
+                .filter_map(|r| guild.roles.get(r))
+                .map(|r| r.position as i64)
+                .max()
+                .unwrap_or(0)
+        };
+        (
+            highest(&actor_member.roles),
+            highest(&target.roles),
+            guild.owner_id,
+        )
+    };
+
+    Ok(check_moderation_allowed(ModCheck {
+        actor_id: actor_id.get(),
+        target_id: target.user.id.get(),
+        bot_id: bot_id.get(),
+        actor_is_owner: actor_id == owner_id,
+        target_is_owner: target.user.id == owner_id,
+        actor_top_role,
+        target_top_role,
+    }))
+}
+
+/// Bulk-delete recent messages in the current channel (1-100).
+#[poise::command(slash_command, required_permissions = "MANAGE_MESSAGES", guild_only)]
+pub async fn purge(
+    ctx: Context<'_>,
+    #[description = "How many recent messages to delete (1-100)"] count: i64,
+) -> Result<(), Error> {
+    let count = match validate_purge_count(count) {
+        Ok(n) => n,
+        Err(e) => return reply_err(ctx, e).await,
+    };
+    let channel = ctx.channel_id();
+    let messages = channel
+        .messages(ctx.http(), serenity::GetMessages::new().limit(count))
+        .await?;
+    let ids: Vec<serenity::MessageId> = messages.iter().map(|m| m.id).collect();
+    match ids.len() {
+        0 => {
+            ctx.say("No messages to delete.").await?;
+        }
+        1 => {
+            channel.delete_message(ctx.http(), ids[0]).await?;
+            ctx.say("Deleted 1 message.").await?;
+        }
+        n => {
+            // Bulk delete only covers messages newer than 14 days; older ones surface an error.
+            channel.delete_messages(ctx.http(), &ids).await?;
+            ctx.say(format!("Deleted {n} messages.")).await?;
+        }
+    }
+    Ok(())
+}
+
+/// Kick a member from the guild.
+#[poise::command(slash_command, required_permissions = "KICK_MEMBERS", guild_only)]
+pub async fn kick(
+    ctx: Context<'_>,
+    #[description = "Member to kick"] member: serenity::Member,
+    #[description = "Reason"] reason: Option<String>,
+) -> Result<(), Error> {
+    if let Err(e) = authorize(&ctx, &member).await? {
+        return reply_err(ctx, e).await;
+    }
+    let reason = reason.unwrap_or_else(|| "No reason provided".to_string());
+    member
+        .kick_with_reason(ctx.serenity_context(), &reason)
+        .await?;
+    ctx.say(format!("Kicked {} ({reason}).", member.user.name))
+        .await?;
+    Ok(())
+}
+
+/// Ban a member, optionally deleting their recent messages (0-7 days).
+#[poise::command(slash_command, required_permissions = "BAN_MEMBERS", guild_only)]
+pub async fn ban(
+    ctx: Context<'_>,
+    #[description = "Member to ban"] member: serenity::Member,
+    #[description = "Days of their messages to delete (0-7)"] delete_message_days: Option<i64>,
+    #[description = "Reason"] reason: Option<String>,
+) -> Result<(), Error> {
+    let days = delete_message_days.unwrap_or(0);
+    // Validate the 0-7 range via the pure helper; serenity's ban takes DAYS (u8), so we
+    // pass `days` directly (the helper's seconds result is only used to gate the range).
+    if let Err(e) = validate_ban_delete_days(days) {
+        return reply_err(ctx, e).await;
+    }
+    if let Err(e) = authorize(&ctx, &member).await? {
+        return reply_err(ctx, e).await;
+    }
+    let reason = reason.unwrap_or_else(|| "No reason provided".to_string());
+    let guild_id = ctx
+        .guild_id()
+        .ok_or("this command can only be used in a guild")?;
+    guild_id
+        .ban_with_reason(ctx.http(), member.user.id, days as u8, &reason)
+        .await?;
+    ctx.say(format!("Banned {} ({reason}).", member.user.name))
+        .await?;
+    Ok(())
+}
+
+/// Unban a user by ID.
+#[poise::command(slash_command, required_permissions = "BAN_MEMBERS", guild_only)]
+pub async fn unban(
+    ctx: Context<'_>,
+    #[description = "User to unban (ID)"] user: serenity::User,
+) -> Result<(), Error> {
+    let guild_id = ctx
+        .guild_id()
+        .ok_or("this command can only be used in a guild")?;
+    guild_id.unban(ctx.http(), user.id).await?;
+    ctx.say(format!("Unbanned {}.", user.name)).await?;
+    Ok(())
+}
+
+/// Timeout (mute) a member for a duration like `10m`, `2h`, `7d` (max 28 days).
+#[poise::command(slash_command, required_permissions = "MODERATE_MEMBERS", guild_only)]
+pub async fn mute(
+    ctx: Context<'_>,
+    #[description = "Member to mute"] mut member: serenity::Member,
+    #[description = "Duration, e.g. 30s, 10m, 2h, 7d (max 28d)"] duration: String,
+) -> Result<(), Error> {
+    let duration = match parse_timeout_duration(&duration) {
+        Ok(d) => d,
+        Err(e) => return reply_err(ctx, e).await,
+    };
+    if let Err(e) = authorize(&ctx, &member).await? {
+        return reply_err(ctx, e).await;
+    }
+    let until = now_unix_secs()? + duration.as_secs() as i64;
+    let timestamp = serenity::Timestamp::from_unix_timestamp(until)?;
+    member
+        .disable_communication_until_datetime(ctx.serenity_context(), timestamp)
+        .await?;
+    ctx.say(format!("Muted {} until <t:{until}:f>.", member.user.name))
+        .await?;
+    Ok(())
+}
+
+/// Clear a member's timeout (unmute).
+#[poise::command(slash_command, required_permissions = "MODERATE_MEMBERS", guild_only)]
+pub async fn unmute(
+    ctx: Context<'_>,
+    #[description = "Member to unmute"] mut member: serenity::Member,
+) -> Result<(), Error> {
+    member.enable_communication(ctx.serenity_context()).await?;
+    ctx.say(format!("Unmuted {}.", member.user.name)).await?;
+    Ok(())
+}
+
+/// All moderation slash commands, for registration in [`crate::commands::all`].
+pub fn commands() -> Vec<poise::Command<Data, Error>> {
+    vec![purge(), kick(), ban(), unban(), mute(), unmute()]
 }
 
 #[cfg(test)]
@@ -286,10 +485,7 @@ mod tests {
 
     #[test]
     fn test_parse_timeout_duration_outer_whitespace_is_trimmed() {
-        assert_eq!(
-            parse_timeout_duration(" 30s "),
-            Ok(Duration::from_secs(30))
-        );
+        assert_eq!(parse_timeout_duration(" 30s "), Ok(Duration::from_secs(30)));
     }
 
     #[test]
@@ -303,7 +499,10 @@ mod tests {
 
     #[test]
     fn test_parse_timeout_duration_29d_returns_too_long() {
-        assert_eq!(parse_timeout_duration("29d"), Err(ModError::DurationTooLong));
+        assert_eq!(
+            parse_timeout_duration("29d"),
+            Err(ModError::DurationTooLong)
+        );
     }
 
     #[test]
@@ -322,7 +521,10 @@ mod tests {
 
     #[test]
     fn test_parse_timeout_duration_whitespace_only_returns_invalid() {
-        assert_eq!(parse_timeout_duration("   "), Err(ModError::InvalidDuration));
+        assert_eq!(
+            parse_timeout_duration("   "),
+            Err(ModError::InvalidDuration)
+        );
     }
 
     #[test]
@@ -332,12 +534,18 @@ mod tests {
 
     #[test]
     fn test_parse_timeout_duration_unknown_unit_returns_invalid() {
-        assert_eq!(parse_timeout_duration("10x"), Err(ModError::InvalidDuration));
+        assert_eq!(
+            parse_timeout_duration("10x"),
+            Err(ModError::InvalidDuration)
+        );
     }
 
     #[test]
     fn test_parse_timeout_duration_non_integer_returns_invalid() {
-        assert_eq!(parse_timeout_duration("abc"), Err(ModError::InvalidDuration));
+        assert_eq!(
+            parse_timeout_duration("abc"),
+            Err(ModError::InvalidDuration)
+        );
     }
 
     #[test]
@@ -350,7 +558,10 @@ mod tests {
 
     #[test]
     fn test_parse_timeout_duration_negative_returns_invalid() {
-        assert_eq!(parse_timeout_duration("-5m"), Err(ModError::InvalidDuration));
+        assert_eq!(
+            parse_timeout_duration("-5m"),
+            Err(ModError::InvalidDuration)
+        );
     }
 
     #[test]
