@@ -147,6 +147,7 @@ pub fn check_moderation_allowed(check: ModCheck) -> Result<(), ModError> {
 // action, and replies. The pure functions hold the logic; these are the wiring.
 // ---------------------------------------------------------------------------
 
+use crate::access::moderation_access_check;
 use crate::{Context, Data, Error};
 use poise::serenity_prelude as serenity;
 
@@ -209,7 +210,12 @@ async fn authorize(
 }
 
 /// Bulk-delete recent messages in the current channel (1-100).
-#[poise::command(slash_command, required_permissions = "MANAGE_MESSAGES", guild_only)]
+#[poise::command(
+    slash_command,
+    required_permissions = "MANAGE_MESSAGES",
+    guild_only,
+    check = "moderation_access_check"
+)]
 pub async fn purge(
     ctx: Context<'_>,
     #[description = "How many recent messages to delete (1-100)"] count: i64,
@@ -241,7 +247,12 @@ pub async fn purge(
 }
 
 /// Kick a member from the guild.
-#[poise::command(slash_command, required_permissions = "KICK_MEMBERS", guild_only)]
+#[poise::command(
+    slash_command,
+    required_permissions = "KICK_MEMBERS",
+    guild_only,
+    check = "moderation_access_check"
+)]
 pub async fn kick(
     ctx: Context<'_>,
     #[description = "Member to kick"] member: serenity::Member,
@@ -260,7 +271,12 @@ pub async fn kick(
 }
 
 /// Ban a member, optionally deleting their recent messages (0-7 days).
-#[poise::command(slash_command, required_permissions = "BAN_MEMBERS", guild_only)]
+#[poise::command(
+    slash_command,
+    required_permissions = "BAN_MEMBERS",
+    guild_only,
+    check = "moderation_access_check"
+)]
 pub async fn ban(
     ctx: Context<'_>,
     #[description = "Member to ban"] member: serenity::Member,
@@ -289,7 +305,12 @@ pub async fn ban(
 }
 
 /// Unban a user by ID.
-#[poise::command(slash_command, required_permissions = "BAN_MEMBERS", guild_only)]
+#[poise::command(
+    slash_command,
+    required_permissions = "BAN_MEMBERS",
+    guild_only,
+    check = "moderation_access_check"
+)]
 pub async fn unban(
     ctx: Context<'_>,
     #[description = "User to unban (ID)"] user: serenity::User,
@@ -303,7 +324,12 @@ pub async fn unban(
 }
 
 /// Timeout (mute) a member for a duration like `10m`, `2h`, `7d` (max 28 days).
-#[poise::command(slash_command, required_permissions = "MODERATE_MEMBERS", guild_only)]
+#[poise::command(
+    slash_command,
+    required_permissions = "MODERATE_MEMBERS",
+    guild_only,
+    check = "moderation_access_check"
+)]
 pub async fn mute(
     ctx: Context<'_>,
     #[description = "Member to mute"] mut member: serenity::Member,
@@ -327,7 +353,12 @@ pub async fn mute(
 }
 
 /// Clear a member's timeout (unmute).
-#[poise::command(slash_command, required_permissions = "MODERATE_MEMBERS", guild_only)]
+#[poise::command(
+    slash_command,
+    required_permissions = "MODERATE_MEMBERS",
+    guild_only,
+    check = "moderation_access_check"
+)]
 pub async fn unmute(
     ctx: Context<'_>,
     #[description = "Member to unmute"] mut member: serenity::Member,

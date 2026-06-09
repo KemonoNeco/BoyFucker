@@ -1,3 +1,4 @@
+mod access;
 mod commands;
 mod config;
 mod error;
@@ -5,9 +6,11 @@ mod events;
 
 use poise::serenity_prelude as serenity;
 
-/// Shared bot state handed to every command and event. Empty for the connection-only scaffold;
-/// this is where a DB pool / HTTP (e.g. LLM) client / config handle will later live.
-pub struct Data {}
+/// Shared bot state handed to every command and event. Holds the PostgreSQL pool backing the
+/// per-guild moderation allowlist; future shared clients (e.g. an LLM client) hang here too.
+pub struct Data {
+    pub db: sqlx::PgPool,
+}
 
 /// Framework-wide error type. poise requires `std::error::Error` here, so this is the boxed-error
 /// alias from poise's own examples (anyhow::Error does not implement `std::error::Error`).
@@ -31,6 +34,21 @@ async fn main() -> anyhow::Result<()> {
 
     let config = config::from_env()?;
 
+    // Connect to PostgreSQL and apply embedded migrations up front — fail fast at boot if the DB
+    // is unreachable rather than first-command-time. `docker compose up -d` serves a local one.
+    let database_url = std::env::var("DATABASE_URL").map_err(|_| {
+        anyhow::anyhow!(
+            "DATABASE_URL is not set (see .env.example; `docker compose up -d` starts a local Postgres)"
+        )
+    })?;
+    let db = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&database_url)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to connect to PostgreSQL: {e}"))?;
+    sqlx::migrate!().run(&db).await?;
+    tracing::info!("database connected; migrations applied");
+
     // non_privileged() is sufficient for slash commands. MESSAGE_CONTENT and GUILD_MEMBERS are
     // privileged intents — add them only when a feature (prefix commands, member events) needs them.
     let intents = serenity::GatewayIntents::non_privileged();
@@ -43,7 +61,8 @@ async fn main() -> anyhow::Result<()> {
             },
             ..Default::default()
         })
-        .setup(|ctx, _ready, framework| {
+        .setup(move |ctx, _ready, framework| {
+            let db = db.clone();
             Box::pin(async move {
                 let commands = &framework.options().commands;
                 // Guild-scoped registration (instant) when TEST_GUILD_ID is set; else global
@@ -62,7 +81,7 @@ async fn main() -> anyhow::Result<()> {
                         tracing::info!("registered {} commands globally", commands.len());
                     }
                 }
-                Ok(Data {})
+                Ok(Data { db })
             })
         })
         .build();

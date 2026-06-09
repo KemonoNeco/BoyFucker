@@ -20,7 +20,13 @@ cargo run                    # run the bot (reads DISCORD_TOKEN; see below)
 cargo watch -x run           # hot-reload dev loop (needs: cargo install cargo-watch)
 ```
 
-**Running locally:** copy `.env.example` → `.env` and fill in `DISCORD_TOKEN` (gitignored — never commit it). With no token, `cargo run` exits with `Error: DISCORD_TOKEN environment variable is not set` — that's the expected config-failure path, not a bug. Set `TEST_GUILD_ID` to register slash commands in one guild **instantly** during dev (without it they register globally, ~1h propagation). `RUST_LOG` controls log level (default `info`), e.g. `RUST_LOG=boyfucker=debug,serenity=warn`.
+**Running locally:** copy `.env.example` → `.env` and fill in `DISCORD_TOKEN` (gitignored — never commit it). With no token, `cargo run` exits with `Error: DISCORD_TOKEN environment variable is not set` — that's the expected config-failure path, not a bug. Set `TEST_GUILD_ID` to register slash commands in one guild **instantly** during dev (without it they register globally, ~1h propagation). A **PostgreSQL** instance is required (the bot fails fast at boot if `DATABASE_URL` is unreachable) — `docker compose up -d` starts a local one. `RUST_LOG` controls log level (default `info`), e.g. `RUST_LOG=boyfucker=debug,serenity=warn`.
+
+## Access control (allowlist)
+
+Who may *invoke* the moderation commands is gated by a **per-guild allowlist** (defense-in-depth on top of each command's Discord `required_permissions`): a user passes the gate iff they are on the guild's allowlist **by user ID or by holding an allowlisted role**. Manage-Server does **not** bypass this gate — it only authorizes the `/allow`-family management commands that edit the list (so an admin adds the first moderator, or themselves, before the commands work; this is setup, not a lockout). The gate **fails closed**: any DB error refuses the command.
+
+The allowlist is stored in **PostgreSQL** (`allowlist_entries`, keyed `(guild_id, kind, entity_id)`; `kind` 0=user, 1=role; Discord snowflakes stored as `BIGINT` via lossless `as i64`/`as u64`). The connection pool lives on `Data`; schema is applied at startup via `sqlx::migrate!()` (embedded; no DB needed at build, runtime-checked `query()` not the `query!` macro). The only **pure, unit-tested** piece is the allow/deny decision; the SQL and the poise `check` wiring are live-verified glue.
 
 ## Architecture
 

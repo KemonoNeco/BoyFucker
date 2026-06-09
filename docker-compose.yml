@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: boyfucker-postgres
+    environment:
+      POSTGRES_USER: boyfucker
+      POSTGRES_PASSWORD: boyfucker
+      POSTGRES_DB: boyfucker
+    ports:
+      - "5432:5432"
+    volumes:
+      - boyfucker_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U boyfucker"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  boyfucker_pgdata:
