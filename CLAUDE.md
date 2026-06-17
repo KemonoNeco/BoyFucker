@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`boyfucker` — a personal Discord moderation bot (Rust). It connects to the gateway, logs "Logged in as …", and serves six moderation slash commands: `/purge`, `/kick`, `/ban`, `/unban`, `/mute` (timeout), `/unmute`. An LLM integration may follow.
+`boyfucker` — a personal Discord moderation bot (Rust). It connects to the gateway, logs "Logged in as …", and serves six moderation slash commands: `/purge`, `/kick`, `/ban`, `/unban`, `/mute` (timeout), `/unmute`, plus a general-purpose `/poll` (native Discord poll, ungated). An LLM integration may follow.
 
 Names: crate `boyfucker`, GitHub repo `BoyFucker`, Discord display name `Boyfucker` (the display name is set in the Developer Portal, not in code, so treat it as the source of truth over anything hardcoded).
 
@@ -39,8 +39,8 @@ Three framework-wide types are defined in `main.rs` (crate root) and shared by s
 Module map:
 - `main.rs` — entry point. `dotenvy` → tracing init → `config::from_env()` → build poise `Framework` → register commands in setup (`register_in_guild` when `TEST_GUILD_ID` is set, else `register_globally`) → start the serenity client. Uses `GatewayIntents::non_privileged()`.
 - `config.rs` — `Config::from_token(Option<String>)` is the **pure, fully-unit-tested** validation; `from_env()` is a thin I/O wrapper that reads `DISCORD_TOKEN` and delegates. Add new config there.
-- `error.rs` — the project's error enums (thiserror): `BotError` (startup) and `ModError` (moderation, user-facing Display strings). Error types live here; consumers `use crate::error::…`.
-- `commands/mod.rs` — `all()` returns `moderation::commands()`. `commands/moderation.rs` holds **both** the pure, unit-tested validators (`validate_purge_count`, `validate_ban_delete_days`, `parse_timeout_duration`, `check_moderation_allowed`) **and** the six slash-command handlers (thin glue over serenity HTTP) plus `authorize()` (builds a `ModCheck` from live ctx + cached role positions).
+- `error.rs` — the project's error enums (thiserror): `BotError` (startup), `ModError` (moderation), and `PollError` (poll input), all carrying user-facing Display strings. Error types live here; consumers `use crate::error::…`.
+- `commands/mod.rs` — `all()` concatenates `moderation::commands()`, `access::commands()`, and `poll::commands()`. `commands/moderation.rs` holds **both** the pure, unit-tested validators (`validate_purge_count`, `validate_ban_delete_days`, `parse_timeout_duration`, `check_moderation_allowed`) **and** the six slash-command handlers (thin glue over serenity HTTP) plus `authorize()` (builds a `ModCheck` from live ctx + cached role positions). `commands/poll.rs` follows the same shape: pure validators (`validate_poll_question`, `parse_poll_options`, `parse_poll_duration`) under one thin `/poll` handler that sends a native `serenity::CreatePoll` as the reply.
 - `events/mod.rs` — `event_handler` matches `serenity::FullEvent`; currently only logs `Ready`.
 
 ## Conventions that aren't obvious from the code

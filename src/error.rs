@@ -46,6 +46,27 @@ pub enum ModError {
     InvalidBanDeleteDays,
 }
 
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum PollError {
+    #[error("Poll question must not be empty")]
+    EmptyQuestion,
+
+    #[error("Poll question must be at most 300 characters")]
+    QuestionTooLong,
+
+    #[error("A poll needs at least 2 options (separate them with |)")]
+    TooFewOptions,
+
+    #[error("A poll can have at most 10 options")]
+    TooManyOptions,
+
+    #[error("Each poll option must be at most 55 characters")]
+    OptionTooLong,
+
+    #[error("Invalid poll duration: use a format like 6h or 2d (1 hour to 32 days)")]
+    InvalidDuration,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -166,6 +187,61 @@ mod tests {
         assert!(
             rendered.contains("7"),
             "expected InvalidBanDeleteDays Display to mention the limit 7, got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn test_poll_error_empty_question_display_non_empty() {
+        let rendered = PollError::EmptyQuestion.to_string();
+        assert!(
+            !rendered.is_empty(),
+            "expected EmptyQuestion Display to be non-empty"
+        );
+    }
+
+    #[test]
+    fn test_poll_error_question_too_long_display_mentions_limit() {
+        let rendered = PollError::QuestionTooLong.to_string();
+        assert!(
+            rendered.contains("300"),
+            "expected QuestionTooLong Display to mention the 300-char limit, got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn test_poll_error_too_few_options_display_mentions_separator() {
+        let rendered = PollError::TooFewOptions.to_string();
+        // The message must teach the `|` separator — users reflexively type commas otherwise.
+        assert!(
+            rendered.contains('|'),
+            "expected TooFewOptions Display to mention the | separator, got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn test_poll_error_too_many_options_display_mentions_limit() {
+        let rendered = PollError::TooManyOptions.to_string();
+        assert!(
+            rendered.contains("10"),
+            "expected TooManyOptions Display to mention the 10-option limit, got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn test_poll_error_option_too_long_display_mentions_limit() {
+        let rendered = PollError::OptionTooLong.to_string();
+        assert!(
+            rendered.contains("55"),
+            "expected OptionTooLong Display to mention the 55-char limit, got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn test_poll_error_invalid_duration_display_non_empty() {
+        let rendered = PollError::InvalidDuration.to_string();
+        assert!(
+            !rendered.is_empty(),
+            "expected InvalidDuration Display to be non-empty, got: {rendered:?}"
         );
     }
 }
