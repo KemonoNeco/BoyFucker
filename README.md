@@ -27,11 +27,30 @@ Utility commands (open to everyone — no permission or allowlist gate):
 | `/join [channel]` | Have the bot join a voice channel and sit there (presence only, no audio — keeps the channel active). With no `channel`, joins the voice channel you're currently in. Groundwork for future voice features. |
 | `/leave` | Disconnect the bot from the voice channel it's in. |
 
+### Message proxy (Telegram ⇄ Discord)
+
+The Discord-side of a bidirectional bridge. Inbound messages from a remote chat are relayed into a
+mapped Discord channel through a per-channel webhook, so **each remote sender appears as themselves**
+(custom name + avatar). Pings in relayed text are always neutralized. The actual Telegram client is
+not wired up yet — these commands manage the routing and let you test the relay.
+
+| Command | Permission | Description |
+|---|---|---|
+| `/proxy link <channel> <remote_chat_id>` | Manage Webhooks | Link a Discord channel to a remote (Telegram) chat |
+| `/proxy unlink <channel>` | Manage Webhooks | Remove a channel's route |
+| `/proxy list` | Manage Webhooks | Show this server's routes |
+| `/proxytest <remote_chat_id> <author> <text> [avatar_url]` | Bot owner | Inject a synthetic inbound message through the real relay (stands in for the deferred Telegram client) |
+
+The bot itself needs the **Manage Webhooks** permission in the server to create the relay webhook.
+The outbound direction (Discord → remote) currently logs what it *would* send.
+
 ## Setup
 
 1. Create an application at the [Discord Developer Portal](https://discord.com/developers/applications),
    add a bot, copy its token, and invite it to your server with the moderation permissions you want
-   it to have.
+   it to have. **Enable the *Message Content* privileged intent** (Bot → Privileged Gateway Intents) —
+   the proxy's outbound direction reads message bodies, and the bot will fail to connect if the code
+   requests this intent while the portal toggle is off.
 2. Copy `.env.example` to `.env` and fill it in:
 
    ```
@@ -65,3 +84,8 @@ and unit-tested. `/join`'s channel-resolution logic (`resolve_join_target`) live
 `src/commands/voice.rs`, likewise pure and unit-tested; its handler asks
 [songbird](https://github.com/serenity-rs/songbird) (gateway-only, no audio driver) to join. The
 command handlers are thin wiring over serenity's HTTP API.
+
+The proxy's pure logic — ping sanitization, Discord-legal webhook-username derivation, and the
+outbound loop-prevention gate — lives in `src/proxy/{sanitize,username,transform}.rs` and is
+unit-tested; the webhook relay (`src/proxy/webhook.rs`), route store (`src/proxy/routes.rs`), and the
+`Egress` outbound seam (`src/proxy/mod.rs`) are glue.
