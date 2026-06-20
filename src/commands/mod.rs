@@ -1,5 +1,6 @@
 pub mod moderation;
 pub mod poll;
+pub mod proxy;
 pub mod voice;
 
 use crate::{Data, Error};
@@ -11,5 +12,6 @@ pub fn all() -> Vec<poise::Command<Data, Error>> {
     cmds.extend(crate::access::commands());
     cmds.extend(poll::commands());
     cmds.extend(voice::commands());
+    cmds.extend(proxy::commands());
     cmds
 }

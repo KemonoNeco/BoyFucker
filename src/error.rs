@@ -74,6 +74,20 @@ pub enum VcError {
     NoTargetChannel,
 }
 
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum ProxyError {
+    #[error("No Discord channel is linked to that remote chat — link one with `/proxy link` first")]
+    NoRouteForRemote,
+
+    #[error(
+        "That channel — or that remote chat — is already linked. Unlink it first with `/proxy unlink`"
+    )]
+    ChannelAlreadyLinked,
+
+    #[error("This channel has reached Discord's webhook limit (15) — remove one and try again")]
+    WebhookLimitReached,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,6 +272,34 @@ mod tests {
         assert!(
             rendered.to_lowercase().contains("voice channel"),
             "expected NoTargetChannel Display to mention 'voice channel', got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn test_proxy_error_no_route_for_remote_display_mentions_link() {
+        let rendered = ProxyError::NoRouteForRemote.to_string();
+        // The message must teach the fix — linking a channel first.
+        assert!(
+            rendered.contains("/proxy link"),
+            "expected NoRouteForRemote Display to point at `/proxy link`, got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn test_proxy_error_channel_already_linked_display_mentions_linked() {
+        let rendered = ProxyError::ChannelAlreadyLinked.to_string();
+        assert!(
+            rendered.to_lowercase().contains("linked"),
+            "expected ChannelAlreadyLinked Display to mention 'linked', got: {rendered}"
+        );
+    }
+
+    #[test]
+    fn test_proxy_error_webhook_limit_reached_display_mentions_limit() {
+        let rendered = ProxyError::WebhookLimitReached.to_string();
+        assert!(
+            rendered.contains("15"),
+            "expected WebhookLimitReached Display to mention the 15-webhook limit, got: {rendered}"
         );
     }
 }
