@@ -5,6 +5,7 @@ mod error;
 mod events;
 
 use poise::serenity_prelude as serenity;
+use songbird::SerenityInit;
 
 /// Shared bot state handed to every command and event. Holds the PostgreSQL pool backing the
 /// per-guild moderation allowlist; future shared clients (e.g. an LLM client) hang here too.
@@ -89,6 +90,8 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("starting boyfucker…");
     let mut client = serenity::ClientBuilder::new(config.token, intents)
         .framework(framework)
+        // Registers songbird's voice manager so `/join` can connect to a voice channel.
+        .register_songbird()
         .await?;
 
     client.start().await?;

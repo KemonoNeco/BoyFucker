@@ -19,11 +19,12 @@ Slash commands, each gated by the matching Discord permission:
 Moderation actions also refuse to target yourself, the bot, or the guild owner, and —
 unless you are the owner — require your top role to be strictly higher than the target's.
 
-Utility command (open to everyone — no permission or allowlist gate):
+Utility commands (open to everyone — no permission or allowlist gate):
 
 | Command | Description |
 |---|---|
 | `/poll <question> <options> [duration] [multiple]` | Create a native Discord poll. Options are separated by `\|` (2–10), e.g. `Pizza \| Sushi \| Tacos`. `duration` accepts `6h`, `2d`, … (1 hour to 32 days; default 24h); `multiple` lets voters pick more than one option. Discord runs the vote and tallies results. |
+| `/join [channel]` | Have the bot join a voice channel and sit there (presence only, no audio — keeps the channel active). With no `channel`, joins the voice channel you're currently in. Groundwork for future voice features. |
 
 ## Setup
 
@@ -59,4 +60,7 @@ cargo fmt                   # format
 The pure validation/authorization logic — purge-count bounds, timeout-duration parsing, ban-day
 range, and the role-hierarchy precedence — lives in `src/commands/moderation.rs` and is unit-tested.
 The `/poll` input validators (question/options/duration) live in `src/commands/poll.rs`, also pure
-and unit-tested. The command handlers are thin wiring over serenity's HTTP API.
+and unit-tested. `/join`'s channel-resolution logic (`resolve_join_target`) lives in
+`src/commands/voice.rs`, likewise pure and unit-tested; its handler asks
+[songbird](https://github.com/serenity-rs/songbird) (gateway-only, no audio driver) to join. The
+command handlers are thin wiring over serenity's HTTP API.

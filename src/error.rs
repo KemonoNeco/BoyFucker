@@ -67,6 +67,13 @@ pub enum PollError {
     InvalidDuration,
 }
 
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum VcError {
+    // WORK_UNIT_ID: wu-vcerror-notargetchannel-display
+    #[error("You're not in a voice channel — join one or pass the `channel` option")]
+    NoTargetChannel,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -242,6 +249,15 @@ mod tests {
         assert!(
             !rendered.is_empty(),
             "expected InvalidDuration Display to be non-empty, got: {rendered:?}"
+        );
+    }
+
+    #[test]
+    fn test_vc_error_no_target_channel_display_mentions_voice_channel() {
+        let rendered = VcError::NoTargetChannel.to_string();
+        assert!(
+            rendered.to_lowercase().contains("voice channel"),
+            "expected NoTargetChannel Display to mention 'voice channel', got: {rendered}"
         );
     }
 }

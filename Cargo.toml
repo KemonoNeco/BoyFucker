@@ -12,3 +12,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "migrate"] }
+# Gateway-only: the bot joins/holds a voice channel (presence) without the audio `driver`
+# feature, so the native opus/symphonia toolchain isn't required. Add `driver` when a future
+# feature needs actual audio playback.
+songbird = { version = "0.4", default-features = false, features = ["gateway", "serenity", "rustls"] }
