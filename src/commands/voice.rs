@@ -81,9 +81,37 @@ pub async fn join(
     Ok(())
 }
 
+/// Leave the voice channel the bot is currently in.
+#[poise::command(slash_command, guild_only)]
+pub async fn leave(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_id = ctx
+        .guild_id()
+        .ok_or("this command can only be used in a guild")?;
+
+    let manager = songbird::get(ctx.serenity_context())
+        .await
+        .ok_or("voice manager was not initialised")?;
+
+    // `remove` leaves the channel and drops the call handler (we hold no audio state to preserve);
+    // `NoCall` means the bot wasn't connected here, which is a normal user-facing case, not an error.
+    match manager.remove(guild_id).await {
+        Ok(()) => ctx.say("Left the voice channel.").await?,
+        Err(songbird::error::JoinError::NoCall) => {
+            ctx.send(
+                poise::CreateReply::default()
+                    .content("I'm not in a voice channel.")
+                    .ephemeral(true),
+            )
+            .await?
+        }
+        Err(e) => ctx.say(format!("Couldn't leave: {e}")).await?,
+    };
+    Ok(())
+}
+
 /// The voice commands, for [`crate::commands::all`].
 pub fn commands() -> Vec<poise::Command<Data, Error>> {
-    vec![join()]
+    vec![join(), leave()]
 }
 
 #[cfg(test)]

@@ -25,6 +25,7 @@ Utility commands (open to everyone — no permission or allowlist gate):
 |---|---|
 | `/poll <question> <options> [duration] [multiple]` | Create a native Discord poll. Options are separated by `\|` (2–10), e.g. `Pizza \| Sushi \| Tacos`. `duration` accepts `6h`, `2d`, … (1 hour to 32 days; default 24h); `multiple` lets voters pick more than one option. Discord runs the vote and tallies results. |
 | `/join [channel]` | Have the bot join a voice channel and sit there (presence only, no audio — keeps the channel active). With no `channel`, joins the voice channel you're currently in. Groundwork for future voice features. |
+| `/leave` | Disconnect the bot from the voice channel it's in. |
 
 ## Setup
 
