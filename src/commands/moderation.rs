@@ -606,6 +606,20 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_timeout_duration_one_second_returns_one_second() {
+        // The smallest accepted magnitude. Pins the zero-reject boundary at exactly 0,
+        // so a `magnitude == 0` → `magnitude <= 1` mutation rejects this and fails.
+        assert_eq!(parse_timeout_duration("1s"), Ok(Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn test_parse_timeout_duration_unit_only_returns_invalid() {
+        // A bare unit with no magnitude: the magnitude substring is empty and must
+        // fail to parse rather than be treated as any default.
+        assert_eq!(parse_timeout_duration("m"), Err(ModError::InvalidDuration));
+    }
+
+    #[test]
     fn test_parse_timeout_duration_overflow_returns_err_without_panic() {
         // 20-digit magnitude overflows the u64 parse and the *86400 multiply; must error, not panic.
         let result = parse_timeout_duration("99999999999999999999d");
@@ -759,6 +773,70 @@ mod tests {
             target_top_role: 5,
         };
         assert_eq!(check_moderation_allowed(check), Ok(()));
+    }
+
+    // --- precedence pinning: the rule order in the doc comment is a contract ---
+    // The cases below force two rules to both apply at once, so each one fails
+    // only if its higher-precedence rule were demoted below the lower one.
+
+    #[test]
+    fn test_check_moderation_allowed_owner_targets_self_returns_cannot_target_self() {
+        // Guild owner runs the action on themselves: rule 1 (self) must win over both
+        // rule 3 (target is owner) and rule 4 (actor-owner bypass). A swap of rule 1
+        // below rule 3 yields CannotTargetOwner; promoting the bypass yields Ok.
+        let check = ModCheck {
+            actor_id: 1,
+            target_id: 1,
+            bot_id: 99,
+            actor_is_owner: true,
+            target_is_owner: true,
+            actor_top_role: 10,
+            target_top_role: 10,
+        };
+        assert_eq!(
+            check_moderation_allowed(check),
+            Err(ModError::CannotTargetSelf)
+        );
+    }
+
+    #[test]
+    fn test_check_moderation_allowed_owner_targets_bot_returns_cannot_target_bot() {
+        // Guild owner runs the action on the bot: rule 2 (target is bot) must win over
+        // rule 4 (actor-owner bypass). Promoting the bypass above rule 2 yields Ok.
+        let check = ModCheck {
+            actor_id: 1,
+            target_id: 99,
+            bot_id: 99,
+            actor_is_owner: true,
+            target_is_owner: false,
+            actor_top_role: 10,
+            target_top_role: 1,
+        };
+        assert_eq!(
+            check_moderation_allowed(check),
+            Err(ModError::CannotTargetBot)
+        );
+    }
+
+    #[test]
+    fn test_check_moderation_allowed_bot_flagged_owner_returns_cannot_target_bot() {
+        // Pins the rule 2 (bot) over rule 3 (owner) adjacency: only a bot/owner swap
+        // would turn this into CannotTargetOwner. NOTE: this input combination cannot
+        // occur live (a bot can't own a guild) — the test exists solely to lock the
+        // documented precedence, not to cover a reachable path.
+        let check = ModCheck {
+            actor_id: 1,
+            target_id: 99,
+            bot_id: 99,
+            actor_is_owner: false,
+            target_is_owner: true,
+            actor_top_role: 5,
+            target_top_role: 1,
+        };
+        assert_eq!(
+            check_moderation_allowed(check),
+            Err(ModError::CannotTargetBot)
+        );
     }
 
     // --- canonical ModError Display discrimination (crate::error::ModError) ---

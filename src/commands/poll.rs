@@ -281,6 +281,13 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_poll_options_only_separators_returns_too_few() {
+        // Nothing but separators and whitespace: every entry is blank and dropped,
+        // leaving zero options, so the blank-drop must not mask a too-few result.
+        assert_eq!(parse_poll_options("  |  | "), Err(PollError::TooFewOptions));
+    }
+
+    #[test]
     fn test_parse_poll_options_eleven_options_returns_too_many() {
         let input = (1..=11)
             .map(|n| n.to_string())
