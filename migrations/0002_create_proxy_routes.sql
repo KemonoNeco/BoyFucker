@@ -16,3 +16,8 @@ CREATE TABLE IF NOT EXISTS proxy_routes (
 -- Reverse (inbound) lookup: a given remote chat maps to exactly one Discord channel.
 CREATE UNIQUE INDEX IF NOT EXISTS proxy_routes_remote
     ON proxy_routes (platform, remote_chat_id);
+
+-- Outbound lookup runs per message on `discord_channel` alone, which is the non-leading column of
+-- the PK and so not seekable by it — index it directly.
+CREATE INDEX IF NOT EXISTS proxy_routes_channel
+    ON proxy_routes (discord_channel);

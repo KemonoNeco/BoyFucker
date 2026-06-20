@@ -121,8 +121,11 @@ pub async fn fetch_by_channel(
     pool: &PgPool,
     discord_channel: u64,
 ) -> Result<Option<(Platform, String)>, Error> {
+    // A channel can in principle hold routes for multiple platforms (the PK allows it); pick the
+    // lowest platform deterministically. ORDER BY makes the choice stable rather than arbitrary.
     let row = sqlx::query(
-        "SELECT platform, remote_chat_id FROM proxy_routes WHERE discord_channel = $1 LIMIT 1",
+        "SELECT platform, remote_chat_id FROM proxy_routes WHERE discord_channel = $1 \
+         ORDER BY platform LIMIT 1",
     )
     .bind(discord_channel as i64)
     .fetch_optional(pool)

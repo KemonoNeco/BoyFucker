@@ -5,7 +5,7 @@
 //! serenity `Webhook` carries its token internally, so its token never touches the database).
 //! [`deliver_inbound`] is the inbound seam a future Telegram adapter calls.
 
-use super::sanitize::sanitize_content;
+use super::sanitize::prepare_relay_content;
 use super::username::derive_webhook_username;
 use super::{Platform, RemoteMessage, routes};
 use crate::Error;
@@ -51,10 +51,16 @@ pub async fn relay_inbound(
     channel: serenity::ChannelId,
     msg: &RemoteMessage,
 ) -> Result<(), Error> {
+    // Sanitize + clamp to Discord's 2000-char limit up front; if nothing's left to send (empty or
+    // media-only), skip silently rather than creating a webhook and 400-ing on an empty message.
+    let Some(content) = prepare_relay_content(&msg.content) else {
+        return Ok(());
+    };
+
     let webhook = get_or_create_webhook(http, channel).await?;
 
     let mut builder = serenity::ExecuteWebhook::new()
-        .content(sanitize_content(&msg.content))
+        .content(content)
         .username(derive_webhook_username(&msg.author))
         // Empty allowed-mentions = mention nothing; must be set explicitly (serenity otherwise
         // falls back to the http default).
