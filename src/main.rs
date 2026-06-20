@@ -3,14 +3,18 @@ mod commands;
 mod config;
 mod error;
 mod events;
+mod proxy;
 
 use poise::serenity_prelude as serenity;
 use songbird::SerenityInit;
+use std::sync::Arc;
 
-/// Shared bot state handed to every command and event. Holds the PostgreSQL pool backing the
-/// per-guild moderation allowlist; future shared clients (e.g. an LLM client) hang here too.
+/// Shared bot state handed to every command and event. Holds the PostgreSQL pool (moderation
+/// allowlist + proxy routes) and the outbound proxy [`proxy::Egress`] sink. Future shared clients
+/// (e.g. an LLM client, a real Telegram client) hang here too.
 pub struct Data {
     pub db: sqlx::PgPool,
+    pub egress: Arc<dyn proxy::Egress>,
 }
 
 /// Framework-wide error type. poise requires `std::error::Error` here, so this is the boxed-error
@@ -50,9 +54,11 @@ async fn main() -> anyhow::Result<()> {
     sqlx::migrate!().run(&db).await?;
     tracing::info!("database connected; migrations applied");
 
-    // non_privileged() is sufficient for slash commands. MESSAGE_CONTENT and GUILD_MEMBERS are
-    // privileged intents — add them only when a feature (prefix commands, member events) needs them.
-    let intents = serenity::GatewayIntents::non_privileged();
+    // non_privileged() covers slash commands; MESSAGE_CONTENT (privileged) is required so the
+    // outbound proxy direction can read message bodies to relay them. It must also be enabled in
+    // the Discord Developer Portal (Bot → Privileged Gateway Intents), else content arrives empty.
+    let intents =
+        serenity::GatewayIntents::non_privileged() | serenity::GatewayIntents::MESSAGE_CONTENT;
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
@@ -82,7 +88,9 @@ async fn main() -> anyhow::Result<()> {
                         tracing::info!("registered {} commands globally", commands.len());
                     }
                 }
-                Ok(Data { db })
+                // Only a logging egress this PR — the Telegram adapter will supply a real one.
+                let egress: Arc<dyn proxy::Egress> = Arc::new(proxy::LoggingEgress);
+                Ok(Data { db, egress })
             })
         })
         .build();
